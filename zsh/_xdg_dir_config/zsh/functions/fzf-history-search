@@ -1,0 +1,10 @@
+#!/bin/zsh
+
+zle || return
+
+local item=$(builtin history -rn 0 | command fzf)
+
+if [[ -n $item ]]; then
+    BUFFER=$item
+    zle end-of-line
+fi

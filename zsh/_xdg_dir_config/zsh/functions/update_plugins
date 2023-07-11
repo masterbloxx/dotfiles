@@ -1,0 +1,12 @@
+#!/bin/zsh
+
+emulate -L zsh
+
+local plugin plugin_dir
+
+for plugin in $zsh_plugins; do
+    plugin_dir=$zsh_data_dir/plugins/${plugin//[:.\/]/_}
+    if [[ -d $plugin_dir/.git ]]; then
+        git -C $plugin_dir pull
+    fi
+done
