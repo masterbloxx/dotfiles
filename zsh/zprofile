@@ -1,0 +1,3 @@
+if [[ $OSTYPE = darwin* && ! -o GLOBAL_RCS ]]; then
+    setopt GLOBAL_RCS
+fi

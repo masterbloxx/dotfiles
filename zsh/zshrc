@@ -1,0 +1,152 @@
+zmodload -e zsh/complist || zmodload zsh/complist
+
+fpath+=("$ZDOTDIR/functions")
+
+command_exists nvim && export VISUAL=nvim
+
+if command_exists fzf; then
+    export FZF_DEFAULT_OPTS='--no-info --color=fg+:-1,bg+:-1,prompt:green,pointer:cyan'
+    command_exists fd && export FZF_DEFAULT_COMMAND='fd --type file --strip-cwd-prefix'
+fi
+
+setopt AUTO_CD \
+    HIST_IGNORE_ALL_DUPS \
+    HIST_IGNORE_SPACE \
+    LIST_PACKED \
+    LIST_ROWS_FIRST \
+    MENU_COMPLETE \
+    PROMPT_SUBST \
+    TRANSIENT_RPROMPT
+
+unsetopt BEEP
+
+HISTFILE=$ZSH_STATE_DIR/history
+HISTSIZE=90000
+SAVEHIST=90000
+
+zstyle ':vcs_info:*' enable git
+zstyle ':vcs_info:git:*' check-for-changes true
+zstyle ':vcs_info:git:*' unstagedstr !
+zstyle ':vcs_info:git:*' stagedstr +
+zstyle ':vcs_info:git:*' formats %F{magenta}%b%f%F{white}%u%f%F{green}%c%f
+zstyle ':vcs_info:git:*' actionformats '%F{magenta}%b%f%F{white}%u%f%F{green}%c%f [%F{yellow}%a%f]'
+
+autoload -Uz vcs_info && precmd_functions+=(vcs_info)
+
+if [[ -v SSH_CONNECTION ]]; then
+    PROMPT=$'\n%F{blue}%4~%f $vcs_info_msg_0_ %F{yellow}%n%f@%F{yellow}%m%f\n%F{%(?.green.red)}%(!.#.>)%f '
+else
+    PROMPT='%F{blue}%3~%f %F{%(?.green.red)}%(!.#.>)%f '
+    RPROMPT='$vcs_info_msg_0_'
+fi
+
+PROMPT2='%F{%(?.green.red)}>%f '
+RPROMPT2=%F{red}%^%f
+
+PROMPT3='# %F{cyan}>%f '
+
+KEYTIMEOUT=1
+
+bindkey -v
+
+bindkey '^?' backward-delete-char
+bindkey '^E' end-of-line
+
+bindkey -M menuselect '^[' send-break
+bindkey -M menuselect '^[[Z' reverse-menu-complete
+
+if command_exists fzf; then
+    autoload -Uz fzf-history-search
+    zle -N fzf-history-search
+    bindkey '^F' fzf-history-search
+    bindkey -a '^F' fzf-history-search
+    if command_exists nvim; then
+        autoload -Uz fzf-nvim-open
+        zle -N fzf-nvim-open
+        bindkey '^O' fzf-nvim-open
+        bindkey -a '^O' fzf-nvim-open
+    fi
+fi
+
+typeset -U ZSH_PLUGINS=()
+
+if command_exists git; then
+    use_plugin() {
+        local plugin_name plugin_dir plugin_file
+        if [[ $1 =~ ^(git|http|https|ssh|ftp):// ]]; then
+            plugin_name=$(basename "$1" .git)
+        else
+            plugin_name=${1:t}
+        fi
+        [[ -n $plugin_name ]] || return
+        plugin_dir=$ZSH_DATA_DIR/plugins/$plugin_name
+        if [[ ! -d $plugin_dir/.git ]]; then
+            rm -Rf "$plugin_dir" || return
+            git clone "$1" "$plugin_dir" || return
+        fi
+        ZSH_PLUGINS+=("$1")
+        plugin_file=$plugin_dir/$plugin_name.plugin.zsh
+        if [[ -r $plugin_file && -f $plugin_file ]]; then
+            emulate -LR zsh && . $plugin_file && return
+        fi
+        return 1
+    }
+
+    use_plugin https://github.com/zsh-users/zsh-completions.git
+    use_plugin https://github.com/zsh-users/zsh-autosuggestions.git
+    use_plugin https://github.com/zdharma-continuum/fast-syntax-highlighting.git
+
+    update_plugins() {
+        local plugins plugin plugin_name plugin_dir
+        if [[ $# -ne 0 ]]; then
+            plugins=("$@")
+        else
+            plugins=("${ZSH_PLUGINS[@]}")
+        fi
+        for plugin in "${plugins[@]}"; do
+            if [[ $plugin =~ ^(git|http|https|ssh|ftp):// ]]; then
+                plugin_name=$(basename "$plugin" .git)
+            else
+                plugin_name=${plugin:t}
+            fi
+            [[ -n $plugin_name ]] || continue
+            plugin_dir=$ZSH_DATA_DIR/plugins/$plugin_name
+            if [[ -d $plugin_dir/.git ]]; then
+                git -C "$plugin_dir" pull
+            else
+                use_plugin "$plugin"
+            fi
+        done
+    }
+else
+    use_plugin() { return 1; }
+    update_plugins() { return 1; }
+fi
+
+if [[ $OSTYPE = darwin* ]] && command_exists brew; then
+    fpath=("$(brew --prefix)/share/zsh/site-functions" "${fpath[@]}")
+fi
+
+zstyle ':completion:*' menu select
+zstyle ':completion:*' completer _extensions _complete _approximate
+zstyle ':completion:*' matcher-list '' 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:|=* r:|=*'
+zstyle ':completion:*' squeeze-slashes true
+zstyle ':completion:*' complete-options true
+zstyle ':completion:*' use-cache true
+zstyle ':completion:*' cache-path "$ZSH_CACHE_DIR/compcache-$ZSH_VERSION"
+
+autoload -Uz compinit && compinit -d "$ZSH_CACHE_DIR/compdump-$ZSH_VERSION"
+
+command_exists rg && alias grep=rg
+
+if command_exists exa; then
+    alias ls=exa
+    alias la='exa -a'
+    alias ll='exa -la'
+    alias lt='exa -T'
+else
+    alias la='ls -A'
+    alias ll='ls -lA'
+fi
+
+source_if_readable "$ZDOTDIR/local/rc"
